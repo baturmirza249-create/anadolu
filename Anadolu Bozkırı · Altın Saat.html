@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="tr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Anadolu Bozkırı · Altın Saat</title>
+<style>
+:root{--bg:#120a06;--fg:#f3dfb5}
+@media (prefers-color-scheme:dark){:root{--bg:#120a06;--fg:#f3dfb5}}
+html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;font-family:Georgia,'Times New Roman',serif}
+canvas{display:block;width:100%;height:100%}
+#map{position:fixed;inset:0;z-index:5;display:none;flex-direction:column;align-items:center;gap:8px;box-sizing:border-box;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px calc(env(safe-area-inset-bottom,0px) + 10px);background:radial-gradient(#3a2414,#120a06);color:var(--fg);overflow-y:auto}
+#map h2{margin:4px 0 0;font:600 20px Georgia,serif}
+#map small{opacity:.75;font:13px Georgia,serif;text-align:center}
+#map svg{width:100%;max-width:980px;border:1px solid rgba(243,223,181,.35);border-radius:8px}
+#inf{max-width:980px;width:100%;box-sizing:border-box;padding:10px 14px;background:rgba(243,223,181,.08);border-left:3px solid #d9a441;border-radius:6px;font:15px/1.5 Georgia,serif}
+#map .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
+#map input{width:min(300px,60vw);accent-color:#d9a441}
+#choice,#end{position:fixed;left:0;right:0;display:none;justify-content:center;gap:12px;flex-wrap:wrap;padding:0 12px}
+#choice{bottom:calc(env(safe-area-inset-bottom,0px) + 70px)}
+#end{bottom:calc(env(safe-area-inset-bottom,0px) + 62px)}
+#choice button{font-size:17px;padding:12px 22px;background:rgba(40,12,4,.7);border-color:#d9a441;animation:pop .6s both}
+@keyframes pop{from{opacity:0;transform:translateY(12px)}}
+#ui{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;justify-content:center;gap:10px}
+button{background:rgba(20,10,4,.55);color:var(--fg);border:1px solid rgba(243,223,181,.4);padding:8px 16px;border-radius:20px;font:14px Georgia,serif;cursor:pointer;backdrop-filter:blur(4px)}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="map"></div>
+<div id="ui"><button id="p">Duraklat</button><button id="s">Hız: 1x</button></div>
+<div id="choice"><button id="b1">🔥 Halk isyan etsin</button><button id="b2">🎉 Sevinç yaşansın</button></div>
+<div id="end"><button id="r3">🗺️ Anadolu Haritası</button><button id="r2">Diğer sonu izle</button><button id="r1">↺ Başa dön</button></div>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d');
+let W,H,D=1;
+function rs(){D=Math.min(devicePixelRatio||1,2);W=cv.width=innerWidth*D;H=cv.height=innerHeight*D}
+addEventListener('resize',rs);rs();
+let t=0,run=true,spd=1;
+document.getElementById('p').onclick=e=>{run=!run;e.target.textContent=run?'Duraklat':'Devam'};
+document.getElementById('s').onclick=e=>{spd=spd==1?2:spd==2?0.5:1;e.target.textContent='Hız: '+spd+'x'};
+const rnd=n=>{const s=Math.sin(n*127.1)*43758.5453;return s-Math.floor(s)};
+function hill(x,l){return Math.sin(x*.0011+l*3)*.5+Math.sin(x*.0027+l*7)*.3+Math.sin(x*.006+l)*.2}
+const layers=[
+ {f:.05,y:.56,a:.09,c:[120,86,92],m:1},
+ {f:.12,y:.62,a:.06,c:[150,96,72]},
+ {f:.25,y:.69,a:.05,c:[170,110,58]},
+ {f:.5,y:.78,a:.04,c:[142,104,46]},
+];
+function mix(c,k,h){return `rgb(${c[0]*k+h[0]*(1-k)|0},${c[1]*k+h[1]*(1-k)|0},${c[2]*k+h[2]*(1-k)|0})`}
+function sky(){
+ const s=g.createLinearGradient(0,0,0,H*.65);
+ s.addColorStop(0,'#2b2f55');s.addColorStop(.35,'#8a5a6a');s.addColorStop(.7,'#f0a050');s.addColorStop(1,'#ffd88a');
+ g.fillStyle=s;g.fillRect(0,0,W,H);
+ const sx=W*.72,sy=H*.55;
+ let r=g.createRadialGradient(sx,sy,0,sx,sy,W*.6);
+ r.addColorStop(0,'rgba(255,240,190,.95)');r.addColorStop(.08,'rgba(255,200,110,.6)');r.addColorStop(.4,'rgba(255,150,70,.18)');r.addColorStop(1,'rgba(255,120,50,0)');
+ g.fillStyle=r;g.fillRect(0,0,W,H);
+ g.fillStyle='#fff6d6';g.beginPath();g.arc(sx,sy,W*.018,0,7);g.fill();
+ // clouds
+ for(let i=0;i<7;i++){
+  const cx=((i*370+t*6)%(W/D+600))*D-300*D,cy=H*(.12+rnd(i)*.25),w=(180+rnd(i+9)*220)*D;
+  const cg=g.createLinearGradient(0,cy-12*D,0,cy+14*D);
+  cg.addColorStop(0,'rgba(255,200,150,.0)');cg.addColorStop(.5,'rgba(255,190,130,.35)');cg.addColorStop(1,'rgba(150,80,90,0)');
+  g.fillStyle=cg;g.beginPath();g.ellipse(cx,cy,w,18*D,0,0,7);g.fill();
+ }
+}
+function ground(L,i,cam){
+ const o=cam*L.f,haze=[255,190,120],k=.55+i*.15;
+ g.beginPath();g.moveTo(0,H);
+ for(let x=0;x<=W;x+=8*D){
+  const wx=x/D+o;let y=H*L.y+hill(wx,i)*H*L.a;
+  if(L.m)y-=Math.pow(Math.abs(Math.sin(wx*.0016+1)),2.2)*H*.09;
+  g.lineTo(x,y);
+ }
+ g.lineTo(W,H);g.closePath();
+ const gr=g.createLinearGradient(0,H*(L.y-.1),0,H);
+ gr.addColorStop(0,mix(L.c,k,haze));gr.addColorStop(1,mix(L.c,k*.8,[60,30,20]));
+ g.fillStyle=gr;g.fill();
+}
+function riders(cam){
+ const f=.25,o=cam*f;
+ for(let i=0;i<14;i++){
+  const wx=(i*90+t*38)%1400-100,sx=(wx-o+ (i<7?0:0))*D;
+  const gx=wx+o*0;const y=H*.69+hill(wx+o,2)*H*.05;
+  const px=wx*D,s=D*(.8+rnd(i)*.15),bob=Math.sin(t*9+i)*1.2*D;
+  g.fillStyle='rgba(40,18,12,.85)';
+  g.save();g.translate(px,y-6*s+bob);g.scale(s,s);
+  g.beginPath();g.ellipse(0,0,9,4,0,0,7);g.fill();
+  g.fillRect(-8,0,2,8+Math.sin(t*12+i)*1.5);g.fillRect(6,0,2,8-Math.sin(t*12+i)*1.5);
+  g.beginPath();g.ellipse(10,-4,3,2,.6,0,7);g.fill();
+  g.fillRect(-1,-11,3,8);g.beginPath();g.arc(0,-13,2.2,0,7);g.fill();
+  g.fillRect(2,-22,1,22);
+  g.restore();
+ }
+}
+function grass(cam){
+ const o=cam*.95;g.lineWidth=1.3*D;
+ for(let i=0;i<260;i++){
+  const wx=Math.floor(o/6)*6-100+i*(W/D/250*1.1);
+  const bx=(i*(W/260)) , seed=Math.floor((o)/ (W/260)/1)+i;
+  const x=((seed*(W/260))-o*D*1+W*20)%W;
+  const r=rnd(seed),y=H*(.86+r*.14),h=(10+r*26)*D*(y/H);
+  const sway=Math.sin(t*2.2+seed*.5+x*.004)*h*.35+Math.sin(t*5+seed)*h*.08;
+  g.strokeStyle=`rgba(${120+r*70|0},${80+r*50|0},${30+r*20|0},.85)`;
+  g.beginPath();g.moveTo(x,y);g.quadraticCurveTo(x+sway*.4,y-h*.6,x+sway,y-h);g.stroke();
+ }
+}
+function banner(x,base,h,sc,ph){
+ const pw=3*sc;g.fillStyle='#2a140c';g.fillRect(x-pw/2,base-h,pw,h);
+ g.fillStyle='#d9a441';g.beginPath();g.arc(x,base-h-4*sc,4.5*sc,0,7);g.fill();
+ const N=22,fw=h*.55,fh=h*.26,top=base-h+6*sc;
+ const wy=(i)=>Math.sin(t*4.2-i*.45+ph)*(i/N)*fh*.28,wx=(i)=>Math.cos(t*3.1-i*.4+ph)*(i/N)*4*sc;
+ const poly=(y0,y1,col)=>{g.beginPath();
+  for(let i=0;i<=N;i++){g.lineTo(x+i/N*fw+wx(i),top+y0*fh+wy(i)+ i/N*fh*.08)}
+  for(let i=N;i>=0;i--){g.lineTo(x+i/N*fw+wx(i),top+y1*fh+wy(i)+ i/N*fh*.08)}
+  g.closePath();g.fillStyle=col;g.fill()};
+ poly(0,1,'#8e1b14');poly(.08,.14,'#d9a441');poly(.86,.92,'#d9a441');
+ // emblem
+ const mi=Math.floor(N*.4),ex=x+.4*fw+wx(mi),ey=top+.5*fh+wy(mi)+.4*fh*.08;
+ g.strokeStyle='#e8b94f';g.lineWidth=2*sc;g.beginPath();g.arc(ex,ey,fh*.2,.5,5.8);g.stroke();
+ // shading
+ for(let i=0;i<N;i+=2){const s=Math.sin(t*4.2-i*.45+ph+1.2)*.12;
+  g.fillStyle=s>0?`rgba(255,200,120,${s})`:`rgba(30,0,0,${-s})`;
+  g.fillRect(x+i/N*fw+wx(i),top+wy(i)+i/N*fh*.08,fw/N*2,fh)}
+}
+function banners(cam){
+ const sp=640,o=cam*1.0,first=Math.floor(o/sp)-1;
+ for(let k=first;k<first+4;k++){
+  const x=(k*sp+160-o)*D,r=rnd(k+3),sc=D*(1+r*.45);
+  banner(x,H*(.96+r*.03),H*(.5+r*.12),sc,k*1.7);
+ }
+}
+function dust(){
+ for(let i=0;i<60;i++){
+  const x=((i*173+t*40*(1+rnd(i)))%(W/D+40))*D,y=H*(.35+rnd(i+4)*.6)+Math.sin(t+i)*14*D;
+  g.fillStyle=`rgba(255,220,150,${.15+rnd(i+2)*.3})`;g.fillRect(x,y,(1+rnd(i)*2)*D,(1+rnd(i)*2)*D);
+ }
+}
+function post(){
+ const v=g.createRadialGradient(W/2,H/2,H*.35,W/2,H/2,W*.7);
+ v.addColorStop(0,'rgba(0,0,0,0)');v.addColorStop(1,'rgba(20,6,0,.55)');
+ g.fillStyle=v;g.fillRect(0,0,W,H);
+ g.fillStyle='rgba(255,170,70,.06)';g.fillRect(0,0,W,H);
+ const bar=H*.07;g.fillStyle='#000';g.fillRect(0,0,W,bar);g.fillRect(0,H-bar,W,bar);
+ const a=stage=='pan'?Math.min(1,Math.max(0,1.5-Math.abs(t-3.5)/3)):0;
+ g.globalAlpha=a;g.fillStyle='#f3dfb5';g.textAlign='center';
+ g.font=`${26*D}px Georgia,serif`;g.fillText('ANADOLU · 1071',W/2,H*.2);
+ g.font=`italic ${15*D}px Georgia,serif`;g.fillText('Bozkırın üzerinde son ışık',W/2,H*.2+26*D);
+ g.globalAlpha=1;
+}
+let stage='pan',st=0,camV=0,mode=''; const E=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x)}; const SP='Gidin, Anadolu’yu fethedin!'; const chEl=document.getElementById('choice'),enEl=document.getElementById('end'); function go(m){mapSeen=false;mode=m;stage='scene';st=0;chEl.style.display='none';enEl.style.display='none'} document.getElementById('b1').onclick=()=>go('riot'); document.getElementById('b2').onclick=()=>go('joy'); document.getElementById('r1').onclick=()=>{stage='pan';t=0;st=0;mode='';enEl.style.display='none'}; document.getElementById('r2').onclick=()=>go(mode=='joy'?'riot':'joy'); function tick(dt){const d=run?dt*spd:0;t+=d;st+=d;let v=10;if(stage=='pan'){v=70;if(t>8){stage='zoom';st=0}}else if(stage=='zoom'){v=70*(1-E(st/3.5));if(st>3.5){stage='speech';st=0}}else if(stage=='speech'){v=0;if(st>4.8){stage='choice';st=0;chEl.style.display='flex'}}else if(stage=='choice'){v=0}else if(stage=='scene'){v=mode=='joy'?30:6;if(st>12&&enEl.style.display!='flex')enEl.style.display='flex';if(st>15&&!mapSeen)openMap()}camV+=v*d;return camV} function zv(){if(stage=='zoom')return 1+1.2*E(st/3.5);if(stage=='speech'||stage=='choice')return 2.2;if(stage=='scene')return 2.2-.8*E(st/5);return 1} function zoomBegin(){const z=zv();let sx=0,sy=0;if(stage=='scene'&&mode=='riot'){sx=(Math.random()-.5)*3*D;sy=(Math.random()-.5)*3*D}g.save();g.translate(W/2+sx,H*.78+sy);g.scale(z,z);g.translate(-W/2,-H*.78)} function zoomEnd(){g.restore()} function sultan(){if(stage=='pan')return;const al=stage=='zoom'?E(st/1.5):1;let r=0,talk=0;if(stage=='speech')r=E(st/1);else if(stage=='choice')r=1;else if(stage=='scene')r=mode=='joy'?1:Math.max(.15,1-E(st/2)*.85);if(stage=='speech'&&st>.8&&st<3.4)talk=1;const u=H*.2/100;g.save();g.globalAlpha=al;g.translate(W/2,H*.85);g.scale(u,u);g.fillStyle='rgba(60,35,15,.8)';g.beginPath();g.ellipse(0,1,34,5,0,0,7);g.fill();g.fillStyle='#1f4a52';g.beginPath();g.moveTo(-17,0);g.lineTo(-12,-62);g.quadraticCurveTo(0,-67,12,-62);g.lineTo(17,0);g.closePath();g.fill();g.fillStyle='#d9a441';g.fillRect(-17,-3,34,3);g.fillRect(-1.5,-62,3,62);g.fillStyle='#8e1b14';g.fillRect(-12,-36,24,4);g.lineCap='round';g.strokeStyle='#1a3f46';g.lineWidth=5;g.beginPath();g.moveTo(-11,-60);g.lineTo(-14,-40);g.stroke();const L=(p,q)=>p+(q-p)*r,sh=Math.sin(t*9)*1.2*talk*r;const ex=L(13,22),ey=L(-42,-57),hx=L(14,24),hy=L(-26,-80)+sh;g.strokeStyle='#1a3f46';g.lineWidth=5;g.beginPath();g.moveTo(11,-60);g.lineTo(ex,ey);g.lineTo(hx,hy);g.stroke();g.fillStyle='#c58f64';g.beginPath();g.arc(hx,hy,3,0,7);g.fill();g.strokeStyle='#c58f64';g.lineWidth=1.8;g.beginPath();g.moveTo(hx,hy);g.lineTo(hx,hy-9*r);g.stroke();g.fillStyle='#c58f64';g.beginPath();g.arc(0,-72,8,0,7);g.fill();g.fillStyle='#2a1a12';g.beginPath();g.moveTo(-7,-72);g.quadraticCurveTo(0,-47,7,-72);g.quadraticCurveTo(0,-66,-7,-72);g.fill();const m=talk?Math.abs(Math.sin(t*14))*1.6:0;g.fillStyle='#4a1010';g.beginPath();g.ellipse(0,-65.5,2,.5+m,0,0,7);g.fill();g.fillStyle='#111';g.fillRect(-4,-74,2,1.2);g.fillRect(2,-74,2,1.2);g.fillStyle='#e8dcc0';g.beginPath();g.ellipse(0,-81,10.5,5,0,0,7);g.fill();g.fillStyle='#8e1b14';g.fillRect(-9.5,-81,19,2);g.strokeStyle='#d9a441';g.lineWidth=1.5;g.beginPath();g.moveTo(0,-86);g.lineTo(0,-93);g.stroke();g.restore()} function crowd(){if(stage!='scene')return;const joy=mode=='joy',cols=['#8e1b14','#1f4a52','#d9a441','#6b3a22'];for(let i=0;i<40;i++){const rr=rnd(i+1),side=i%2?1:-1,tx=W/2+side*W*(.1+.3*rnd(i+7)),x0=W/2+side*W*.75,p=E((st-rr*1.5)/4.5);if(p<=0)continue;const x=x0+(tx-x0)*p+(joy?0:Math.sin(t*7+i)*3*D),y=H*(.88+rnd(i+5)*.07),u=H*.14/100*(y/H)*1.08,jb=joy?Math.abs(Math.sin(t*5+i))*14*u:0;g.save();g.translate(x,y-jb);g.scale(u,u);g.fillStyle=joy?cols[i%4]:'#26110b';g.beginPath();g.moveTo(-8,0);g.lineTo(-6,-40);g.lineTo(6,-40);g.lineTo(8,0);g.fill();g.fillStyle=joy?'#c58f64':'#26110b';g.beginPath();g.arc(0,-48,6,0,7);g.fill();const w=Math.sin(t*(joy?9:6)+i)*(joy?8:3);g.strokeStyle=joy?cols[i%4]:'#26110b';g.lineWidth=4;g.lineCap='round';g.beginPath();g.moveTo(-6,-38);g.lineTo(-13-w*.3,-62+w);g.moveTo(6,-38);g.lineTo(13+w*.3,-62-w);g.stroke();if(!joy&&i%3==0){const fx=13+w*.3,fy=-62-w;g.strokeStyle='#4a2a14';g.lineWidth=2.5;g.beginPath();g.moveTo(fx,fy);g.lineTo(fx,fy-14);g.stroke();const fl=.8+Math.random()*.4,gr=g.createRadialGradient(fx,fy-18,0,fx,fy-18,22*fl);gr.addColorStop(0,'rgba(255,230,150,.95)');gr.addColorStop(.35,'rgba(255,120,30,.6)');gr.addColorStop(1,'rgba(255,60,0,0)');g.fillStyle=gr;g.beginPath();g.arc(fx,fy-18,22*fl,0,7);g.fill()}g.restore()}} function extraScene(){sultan();crowd()} function txt(s,size,y,a,col){g.globalAlpha=Math.max(0,Math.min(1,a));g.fillStyle=col||'#f3dfb5';g.textAlign='center';g.font='italic '+size*D+'px Georgia,serif';g.shadowColor='rgba(0,0,0,.85)';g.shadowBlur=8*D;g.fillText(s,W/2,y);g.shadowBlur=0;g.globalAlpha=1} function overlays(){if(stage=='speech'||stage=='choice'){const n=stage=='choice'?SP.length:Math.max(0,Math.min(SP.length,Math.floor((st-.8)/2.4*SP.length)));txt('“'+SP.slice(0,n)+(n==SP.length?'”':''),Math.min(34,innerWidth/17),H*.17,1);txt('Sultan Alp Arslan',16,H*.17+28*D,.85,'#d9a441')}if(stage!='scene')return;const k=E(st/3);txt(mode=='joy'?'Ordu coşkuyla yola çıktı; bozkırın her yanında sevinç var.':'Halk ayaklandı; meşaleler yanıyor, bozkırda huzursuzluk büyüyor.',Math.min(20,innerWidth/32),H*.17,(st-1)/1.5);if(mode=='riot'){g.fillStyle='rgba(60,8,0,'+.38*k+')';g.fillRect(0,0,W,H);for(let i=0;i<30;i++){const x=W*rnd(i+3),p=(t*.12+rnd(i))%1,y=H*.9-p*H*.6,r=(20+p*70)*D;g.fillStyle='rgba(40,35,35,'+.22*(1-p)*k+')';g.beginPath();g.arc(x+Math.sin(t+i)*20*D,y,r,0,7);g.fill()}g.fillStyle='rgba(255,90,0,'+(.04+Math.random()*.04)*k+')';g.fillRect(0,0,W,H)}else{g.fillStyle='rgba(255,210,120,'+.1*k+')';g.fillRect(0,0,W,H);for(let i=0;i<110;i++){const x=W*rnd(i)+Math.sin(t*1.5+i)*30*D,y=((t*70*D*(.6+rnd(i+1))+rnd(i+2)*H)%(H*1.1))-H*.05;g.save();g.translate(x,y);g.rotate(t*3+i);g.globalAlpha=k;g.fillStyle=['#d9a441','#c0281c','#2f8f9a','#f3dfb5'][i%4];g.fillRect(-3*D,-1.5*D,6*D,3*D);g.restore()}}}
+let mapOn=false,mapSeen=false,sel=0,pid=0;const mp=document.getElementById('map');const LAND='28,32 100,24 140,52 240,52 384,20 432,48 568,60 636,40 688,56 720,76 760,100 760,124 752,164 748,208 672,212 580,220 480,228 444,262 416,248 420,232 364,228 280,252 208,228 140,236 100,228 84,220 68,188 36,164 32,120 28,96 52,84 20,64';const PA=['M796 130L682 134L631 104L460 110L294 103L169 83','M796 200L588 184L399 151L279 185L208 224','M796 95L631 104L460 110L330 125L201 109L65 163'];const CT=[['Malazgirt',682,134,1071,9999,'26 Ağustos 1071','Alparslan, Bizans İmparatoru IV. Romanos Diogenes’i yendi ve esir aldı. Zafer, Türkmen boylarının Anadolu’ya geçişini hızlandırdı. Alparslan 1072’de öldü; yerine oğlu Melikşah geçti.'],['Erzurum',631,104,1071,9999,'1071 sonrası','Doğu Anadolu’nun kapısı. Türkmen boyları buradan batıya yayıldı; sonraki yıllarda bölgede Saltuklular egemen oldu.'],['Sivas',460,110,1075,9999,'11. yüzyıl sonu','Danişmendliler Sivas–Tokat–Niksar çevresinde bir beylik kurdu ve Bizans’a karşı akınlar düzenledi.'],['Diyarbakır',588,184,1085,9999,'1085 civarı','Güneydoğu’da Mervanî hâkimiyeti sona erdi, Selçuklu yönetimi yerleşti.'],['Kayseri',399,151,1080,9999,'1080’ler','İç Anadolu’da Türkmen yerleşimi arttı; şehir Danişmendliler ile Anadolu Selçukluları arasında el değiştirdi.'],['Konya',279,185,1081,9999,'1080’ler','Sonradan Anadolu Selçuklu Devleti’nin başkenti oldu. Türkmen yerleşimiyle bölgenin yüzü hızla değişti.'],['İznik',169,83,1075,1097,'1075 – 1097','Kutalmışoğlu Süleymanşah, İznik’i merkez yaparak Anadolu Selçuklu Devleti’ni kurdu. Şehir 1097’de Haçlılar’ın eline geçti.'],['Eskişehir',201,109,1081,9999,'1097','Dorylaion yakınında I. Kılıçarslan, Birinci Haçlı Seferi ordusuyla çarpıştı ve yenildi.'],['İzmir',65,163,1081,9999,'1081 civarı','Çaka Bey Ege kıyılarında bir beylik kurdu ve donanma inşa etti; Türklerin Ege’de deniz gücü kurma girişimiydi.'],['Antakya',428,252,1084,1098,'1084 – 1098','Süleyman Şah 1084’te şehri aldı. 1098’de Haçlılar şehri geri aldı.'],['Antalya',208,224,1207,9999,'1207','Akdeniz limanı uzun süre Bizans elinde kaldı. 1207’de I. Gıyaseddin Keyhusrev şehri alarak Selçuklulara kazandırdı.'],['İstanbul',139,60,9999,9999,'Bizans başkenti','İç Anadolu’yu kaybeden Bizans, Batı’dan yardım istedi; bu, 1096’daki Birinci Haçlı Seferi’ne giden süreci etkiledi.'],['Niksar',458,76,1085,9999,'1080’ler','Danişmendli Beyliği’nin önemli merkezlerinden biri; Bizans’a karşı akınların üslerinden sayılır.'],['Trabzon',569,60,9999,9999,'Bizans hâkimiyeti','Karadeniz kıyısı bu dönemde Bizans elinde kaldı. Türk akınları bölgeye ulaştı ama şehir kalıcı olarak alınamadı.']];function buildMap(){let s=`<h2>Malazgirt Sonrası Anadolu</h2><small>Altın nokta: Türk hâkimiyeti · Gri: Bizans / Haçlı / henüz alınmamış · Tarihler yaklaşık, kaynaklara göre değişir</small><svg viewBox='0 0 800 280'><rect width='800' height='280' fill='#1d3b4a'/><polygon points='${LAND}' fill='#c9a96a' stroke='#6b4a22' stroke-width='2' stroke-linejoin='round'/>`;PA.forEach((d,pi)=>{s+=`<path id='pa${pi}' d='${d}' fill='none' stroke='#f3dfb5' stroke-opacity='.5' stroke-width='2' stroke-dasharray='6 8'><animate attributeName='stroke-dashoffset' from='56' to='0' dur='3s' repeatCount='indefinite'/></path>`;for(let k=0;k<7;k++)s+=`<circle r='3.4' fill='#8e1b14' stroke='#f3dfb5' stroke-width='1'><animateMotion dur='16s' begin='-${k*16/7}s' repeatCount='indefinite'><mpath href='#pa${pi}'/></animateMotion></circle>`});CT.forEach((c,i)=>{s+=`<g class='ct' data-i='${i}' style='cursor:pointer'><circle cx='${c[1]}' cy='${c[2]}' r='16' fill='transparent'/><circle id='cc${i}' cx='${c[1]}' cy='${c[2]}' r='7' fill='#777' stroke='#fff' stroke-width='1.5'/><text x='${c[1]}' y='${c[2]-12}' font-size='11' text-anchor='middle' fill='#2a140c' font-family='Georgia'>${c[0]}</text></g>`});s+=`</svg><div class='row'><span>Yıl: <b id='yl'>1071</b></span><input type='range' id='yr' min='1071' max='1100' value='1071'><button id='pl'>▶ Yılları oynat</button></div><div id='inf'></div><div class='row'><button id='mc'>← Sahneye dön</button><button id='mr'>↺ Başa dön</button></div>`;mp.innerHTML=s;mp.querySelector('svg').onclick=e=>{const g=e.target.closest('.ct');if(g){sel=+g.dataset.i;show();fx(sel)}};const yr=document.getElementById('yr');yr.oninput=upd;document.getElementById('pl').onclick=()=>{if(pid){clearInterval(pid);pid=0;return}if(+yr.value>=1100)yr.value=1071;pid=setInterval(()=>{yr.value=+yr.value+1;upd();if(+yr.value>=1100){clearInterval(pid);pid=0}},700)};document.getElementById('mc').onclick=closeMap;document.getElementById('mr').onclick=()=>{closeMap();document.getElementById('r1').click()};upd()}function upd(){const y=+document.getElementById('yr').value;document.getElementById('yl').textContent=y;CT.forEach((c,i)=>document.getElementById('cc'+i).setAttribute('fill',y>=c[3]&&y<c[4]?'#e8b94f':'#777'));show()}function show(){const c=CT[sel],y=+document.getElementById('yr').value,on=y>=c[3]&&y<c[4];CT.forEach((_,i)=>document.getElementById('cc'+i).setAttribute('stroke-width',i==sel?4:1.5));document.getElementById('inf').innerHTML='<b>'+c[0]+' · '+c[5]+'</b><br>'+c[6]+'<br><i style=\'opacity:.8\'>'+y+' yılında: '+(on?'Türk hâkimiyetinde.':'Türk hâkimiyetinde değil.')+'</i>'}function openMap(){mapOn=true;mapSeen=true;mp.style.display='flex';chEl.style.display='none';enEl.style.display='none';sel=0;show();fx(0)}function closeMap(){mapOn=false;mp.style.display='none';if(pid){clearInterval(pid);pid=0}if(stage=='scene')enEl.style.display='flex'}const TY=['war','settle','state','state','settle','state','state','war','sea','war','sea','city','state','city'],IC={war:'⚔️',settle:'⛺',state:'🚩',sea:'⚓',city:'🏰'};function fx(i){const o=document.getElementById('fx');if(o)o.remove();const c=CT[i],x=c[1],y=c[2],ty=TY[i]||'city';let s=`<g id='fx' pointer-events='none'>`;for(let k=0;k<3;k++)s+=`<circle cx='${x}' cy='${y}' r='8' fill='none' stroke='#fff' stroke-width='2'><animate attributeName='r' from='8' to='46' dur='2.4s' begin='${k*.8}s' repeatCount='indefinite'/><animate attributeName='stroke-opacity' from='.9' to='0' dur='2.4s' begin='${k*.8}s' repeatCount='indefinite'/></circle>`;if(ty=='war')for(let k=0;k<6;k++){const a=k%2?1:-1,d=k*.35;s+=`<circle r='3.5' fill='${a>0?'#c0281c':'#2f8f9a'}'><animate attributeName='cx' values='${x+a*50};${x+a*4};${x+a*50}' dur='2.4s' begin='${d}s' repeatCount='indefinite'/><animate attributeName='cy' values='${y-18+k*7};${y};${y-18+k*7}' dur='2.4s' begin='${d}s' repeatCount='indefinite'/></circle>`}if(ty=='settle')for(let k=0;k<7;k++){const dx=Math.cos(k*.9)*(18+k*3),dy=Math.sin(k*.9)*(12+k*2);s+=`<text x='${x+dx}' y='${y+dy}' font-size='11' text-anchor='middle' opacity='0'>⛺<animate attributeName='opacity' values='0;1;1;0' keyTimes='0;.2;.8;1' dur='4s' begin='${k*.4}s' repeatCount='indefinite'/></text>`}s+=`<text x='${x}' y='${y-24}' font-size='18' text-anchor='middle'>${IC[ty]}<animate attributeName='y' values='${y-24};${y-30};${y-24}' dur='1s' repeatCount='indefinite'/></text></g>`;mp.querySelector('svg').insertAdjacentHTML('beforeend',s)}buildMap();document.getElementById('r3').onclick=openMap;
+let last=performance.now();
+function frame(n){
+ const dt=Math.min(.05,(n-last)/1000);last=n;
+ ;
+ const cam=tick(dt);
+ zoomBegin();sky();
+ layers.forEach((L,i)=>{ground(L,i,cam);if(i==2)riders(cam)});
+ banners(cam);grass(cam);dust();extraScene();zoomEnd();overlays();post();
+ requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>
